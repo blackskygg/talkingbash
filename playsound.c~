@@ -1,0 +1,78 @@
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_audio.h>
+
+#include "playsound.h"
+
+static int release_audio();
+static void SDLCALL callback(void *data, Uint8 *stream, int len);
+static int prepare_audio(const char *name);
+
+static SDL_AudioDeviceID dev;
+static Uint8 *wav_buffer;
+static Uint32 wav_length;
+static size_t pos;
+
+char need_release;
+
+static int release_audio()
+{
+        SDL_FreeWAV(wav_buffer);
+        SDL_CloseAudioDevice(dev);
+
+        need_release = 0;
+        return 0;
+}
+
+static void SDLCALL callback(void *data, Uint8 *stream, int len)
+{
+        SDL_memset(stream, 0, len);
+        if(wav_length ==0) {
+                return;
+        }
+        len = (len > wav_length) ? wav_length : len;
+        memcpy(stream, wav_buffer+pos, len);
+        wav_length -= len;
+        pos += len;
+}
+
+static int prepare_audio(const char *name)
+{
+        SDL_AudioSpec wav_spec;
+
+        if(need_release)
+                release_audio();
+        if (SDL_LoadWAV(name, &wav_spec, &wav_buffer, &wav_length) == NULL) {
+                fprintf(stderr, "Could not open test.wav: %s\n", SDL_GetError());
+        }
+        pos = 0;
+
+        wav_spec.callback = callback;
+        dev = SDL_OpenAudioDevice(NULL, 0, &wav_spec, NULL, SDL_AUDIO_ALLOW_FORMAT_CHANGE);
+
+        need_release = 1;
+        return 0;
+}
+
+int playsound_init()
+{
+        SDL_Init(SDL_INIT_AUDIO);
+        SDL_AudioInit("alsa");
+        return 0;
+}
+
+int playsound_release()
+{
+        if(need_release)
+                release_audio();
+        SDL_AudioQuit();
+        SDL_Quit();
+        return 0;
+}
+
+
+int play_audio(const char *name)
+{
+        prepare_audio(name);
+        SDL_PauseAudioDevice(dev, 0);
+        return 0;
+}
